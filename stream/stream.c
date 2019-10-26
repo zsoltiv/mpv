@@ -602,7 +602,7 @@ int stream_read_char_fallback(stream_t *s)
 
 static void get_buffers(struct stream *s, bstr *a, bstr *b)
 {
-    int len = s->buf_end - s->buf_start;
+    int len = s->buf_end - s->buf_cur;
 
     a->start = &s->buffer[s->buf_cur & s->buffer_mask];
     a->len = MPMIN(len, s->buffer_mask + 1 - (s->buf_cur & s->buffer_mask));
