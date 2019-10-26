@@ -251,6 +251,7 @@ static bool stream_resize_buffer(struct stream *s, int new)
 {
     // Keep all valid buffer.
     int old_used_len = s->buf_end - s->buf_start;
+    int old_pos = s->buf_cur - s->buf_start;
     new = MPMAX(new, old_used_len);
 
     new = MPMAX(new, s->requested_buffer_size);
@@ -283,8 +284,9 @@ static bool stream_resize_buffer(struct stream *s, int new)
     if (s->buffer)
         new_len = ring_copy(s, nbuf, new, s->buf_start);
     assert(new_len == old_used_len);
+    assert(old_pos <= old_used_len);
     s->buf_start = 0;
-    s->buf_cur = 0;
+    s->buf_cur = old_pos;
     s->buf_end = new_len;
 
     if (s->buffer != s->buffer_inline)
