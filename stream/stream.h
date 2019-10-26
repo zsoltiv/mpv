@@ -28,7 +28,10 @@
 
 #include "misc/bstr.h"
 
+// Minimum guaranteed buffer and seek-back size.
 #define STREAM_BUFFER_SIZE 2048
+// (Half of this is typically reserved for seeking back.)
+#define STREAM_FIXED_BUFFER_SIZE (STREAM_BUFFER_SIZE * 2)
 
 // stream->mode
 #define STREAM_READ  0
@@ -119,7 +122,6 @@ typedef struct stream {
     void (*close)(struct stream *s);
 
     int read_chunk; // maximum amount of data to read at once to limit latency
-    unsigned int buf_pos, buf_len;
     int64_t pos;
     int eof;
     int mode; //STREAM_READ or STREAM_WRITE
@@ -145,20 +147,46 @@ typedef struct stream {
     // added to this. The user can reset this as needed.
     uint64_t total_unbuffered_read_bytes;
 
+    // Buffer size requested by user; s->buffer may have a different size
+    int requested_buffer_size;
+
+    // This is a ring buffer. It is reset only on seeks (or when buffers are
+    // dropped). Otherwise old contents always stay valid.
+    // The valid buffer is from buf_start to buf_end; buf_end can be larger
+    // then the buffer size (requires wrap around). buf_cur is a value in the
+    // range [buf_start, buf_end].
+    // When reading more data from the stream, buf_start is advanced as old
+    // data is overwritten with new data.
+    // Example:
+    //    0  1  2  3    4  5  6  7    8  9  10 11  12  13 14 15
+    //  +===========================+---------------------------+
+    //  + 05 06 07 08 | 01 02 03 04 + 05 06 07 08 | 01 02 03 04 +
+    //  +===========================+---------------------------+
+    //                  ^ buf_start (4)  |          |
+    //                                   |          ^ buf_end (12 % 8 => 4)
+    //                                   ^ buf_cur (9 % 8 => 1)
+    //  Here, the entire 8 byte buffer is filled, i.e. buf_end - buf_start = 8.
+    // buffer_mask == 7, so (x & buffer_mask) == (x % buffer_size)
+    unsigned int buf_start; // index of oldest byte in buffer (is <= buffer_mask)
+    unsigned int buf_cur;   // current read pos (can be > buffer_mask)
+    unsigned int buf_end;   // end position (can be > buffer_mask)
+
+    unsigned int buffer_mask; // buffer_size-1, where buffer_size == 2**n
     uint8_t *buffer;
 
-    int buffer_alloc;
-    uint8_t buffer_inline[STREAM_BUFFER_SIZE];
+    uint8_t buffer_inline[STREAM_FIXED_BUFFER_SIZE];
 } stream_t;
 
-int stream_fill_buffer(stream_t *s);
+// Non-inline version with stream_read_char().
+int stream_read_char_fallback(stream_t *s);
 
 int stream_write_buffer(stream_t *s, unsigned char *buf, int len);
 
 inline static int stream_read_char(stream_t *s)
 {
-    return (s->buf_pos < s->buf_len) ? s->buffer[s->buf_pos++] :
-           (stream_fill_buffer(s) ? s->buffer[s->buf_pos++] : -256);
+    return s->buf_cur < s->buf_end
+        ? s->buffer[(s->buf_cur++) & s->buffer_mask]
+        : stream_read_char_fallback(s);
 }
 
 int stream_skip_bom(struct stream *s);
@@ -170,7 +198,7 @@ inline static int stream_eof(stream_t *s)
 
 inline static int64_t stream_tell(stream_t *s)
 {
-    return s->pos + s->buf_pos - s->buf_len;
+    return s->pos + s->buf_cur - s->buf_end;
 }
 
 bool stream_skip(stream_t *s, int64_t len);

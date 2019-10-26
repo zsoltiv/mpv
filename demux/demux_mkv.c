@@ -2030,7 +2030,6 @@ static int demux_mkv_open(demuxer_t *demuxer, enum demux_check check)
 
     while (1) {
         start_pos = stream_tell(s);
-        stream_peek(s, 4); // make sure we can always seek back
         uint32_t id = ebml_read_id(s);
         if (s->eof) {
             if (!mkv_d->probably_webm_dash_init)
@@ -2839,7 +2838,6 @@ static int read_next_block_into_queue(demuxer_t *demuxer)
     find_next_cluster:
         mkv_d->cluster_end = 0;
         for (;;) {
-            stream_peek(s, 4); // guarantee we can undo ebml_read_id() below
             mkv_d->cluster_start = stream_tell(s);
             uint32_t id = ebml_read_id(s);
             if (id == MATROSKA_ID_CLUSTER)
