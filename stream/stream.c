@@ -497,14 +497,6 @@ static bool stream_read_more(struct stream *s, int forward, bool keep_old)
 
     int avail = s->buf_end - s->buf_cur;
     if (avail < forward) {
-        int buf_alloc = s->buffer_mask + 1;
-
-        assert(s->buf_start <= s->buf_cur);
-        assert(s->buf_cur <= s->buf_end);
-        assert(s->buf_cur < buf_alloc * 2);
-        assert(s->buf_end < buf_alloc * 2);
-        assert(s->buf_start < buf_alloc);
-
         // Avoid that many small reads will lead to many low-level read calls.
         forward = MPMAX(forward, s->requested_buffer_size / 2);
 
@@ -515,6 +507,14 @@ static bool stream_read_more(struct stream *s, int forward, bool keep_old)
 
         if (!stream_resize_buffer(s, buf_old + forward))
             return false;
+
+        int buf_alloc = s->buffer_mask + 1;
+
+        assert(s->buf_start <= s->buf_cur);
+        assert(s->buf_cur <= s->buf_end);
+        assert(s->buf_cur < buf_alloc * 2);
+        assert(s->buf_end < buf_alloc * 2);
+        assert(s->buf_start < buf_alloc);
 
         // Note: read as much as possible, even if forward is much smaller. Do
         // this because the stream buffer is supposed to set an approx. minimum
