@@ -140,6 +140,7 @@ typedef struct stream {
     bool access_references : 1; // open other streams
     struct mp_log *log;
     struct mpv_global *global;
+    struct stream_opts *opts;
 
     struct mp_cancel *cancel;   // cancellation notification
 
@@ -175,6 +176,7 @@ typedef struct stream {
 
     unsigned int buffer_mask; // buffer_size-1, where buffer_size == 2**n
     uint8_t *buffer;
+    uint8_t *shadow;
 
     uint8_t buffer_inline[STREAM_FIXED_BUFFER_SIZE];
 } stream_t;
