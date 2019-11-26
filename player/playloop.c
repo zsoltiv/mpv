@@ -45,6 +45,7 @@
 #include "sub/dec_sub.h"
 #include "sub/osd.h"
 #include "video/out/vo.h"
+#include "video/out/win_state.h"
 
 #include "core.h"
 #include "client.h"
@@ -832,10 +833,12 @@ static void handle_cursor_autohide(struct MPContext *mpctx)
 static void handle_vo_events(struct MPContext *mpctx)
 {
     struct vo *vo = mpctx->video_out;
-    int events = vo ? vo_query_and_reset_events(vo, VO_EVENTS_USER) : 0;
+    if (!vo)
+        return;
+    int events = vo_query_and_reset_events(vo, VO_EVENTS_USER);
     if (events & VO_EVENT_RESIZE)
         mp_notify(mpctx, MP_EVENT_WIN_RESIZE, NULL);
-    if (events & VO_EVENT_WIN_STATE)
+    if (events & (VO_EVENT_WIN_STATE | VO_EVENT_WIN_STATE2))
         mp_notify(mpctx, MP_EVENT_WIN_STATE, NULL);
     if (events & VO_EVENT_FULLSCREEN_STATE) {
         // The only purpose of this is to update the fullscreen flag on the
@@ -846,6 +849,22 @@ static void handle_vo_events(struct MPContext *mpctx)
         if (old_fs != fs) {
             m_config_set_option_raw(mpctx->mconfig,
                 m_config_get_co(mpctx->mconfig, bstr0("fullscreen")), &fs, 0);
+        }
+    }
+    if (events & VO_EVENT_WIN_STATE2) {
+        // The only purpose of this is to update the option values on the
+        // playloop side if it changes "from outside" on the VO. This will be
+        // unnecessary once the core can deal with asynchronous option changes.
+        while (1) {
+            union m_option_value val;
+            int st = vo_win_state_fetch_ext_wrap(vo, -1, &val);
+            if (st < 0)
+                break;
+            char *optname = vo_win_state_opt(st);
+            if (optname) {
+                m_config_set_option_raw(mpctx->mconfig,
+                    m_config_get_co(mpctx->mconfig, bstr0(optname)), &val, 0);
+            }
         }
     }
 }

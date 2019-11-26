@@ -37,7 +37,8 @@ enum {
     VO_EVENT_RESIZE                     = 1 << 1,
     // The ICC profile needs to be reloaded
     VO_EVENT_ICC_PROFILE_CHANGED        = 1 << 2,
-    // Some other window state changed (position, window state, fps)
+    // When display fps or window position changes.
+    // Legacy: some other window state changed (fullscreen etc.)
     VO_EVENT_WIN_STATE                  = 1 << 3,
     // The ambient light conditions changed and need to be reloaded
     VO_EVENT_AMBIENT_LIGHTING_CHANGED   = 1 << 4,
@@ -48,10 +49,13 @@ enum {
     // Special thing for encode mode (vo_driver.initially_blocked).
     // Part of VO_EVENTS_USER to make vo_is_ready_for_frame() work properly.
     VO_EVENT_INITIAL_UNBLOCK            = 1 << 7,
+    // Triggered by vo_win_state. Other code does not mess with this.
+    VO_EVENT_WIN_STATE2                 = 1 << 8,
 
     // Set of events the player core may be interested in.
     VO_EVENTS_USER = VO_EVENT_RESIZE | VO_EVENT_WIN_STATE |
-                     VO_EVENT_FULLSCREEN_STATE | VO_EVENT_INITIAL_UNBLOCK,
+                     VO_EVENT_FULLSCREEN_STATE | VO_EVENT_INITIAL_UNBLOCK |
+                     VO_EVENT_WIN_STATE2,
 };
 
 enum mp_voctrl {
@@ -80,12 +84,16 @@ enum mp_voctrl {
     VOCTRL_UNINIT,
     VOCTRL_RECONFIG,
 
+    // Legacy, do not use.
     VOCTRL_FULLSCREEN,
+    VOCTRL_GET_FULLSCREEN,
     VOCTRL_ONTOP,
     VOCTRL_BORDER,
     VOCTRL_ALL_WORKSPACES,
+    VOCTRL_GET_WIN_STATE,               // int* (VO_WIN_STATE_* flags)
 
-    VOCTRL_GET_FULLSCREEN,
+    // If you use vo_win_state, call vo_win_state_update().
+    VOCTRL_VO_WIN_STATE_UPDATE,
 
     VOCTRL_UPDATE_WINDOW_TITLE,         // char*
     VOCTRL_UPDATE_PLAYBACK_STATE,       // struct voctrl_playback_state*
@@ -101,8 +109,6 @@ enum mp_voctrl {
     // these must access the not-fullscreened window size only).
     VOCTRL_GET_UNFS_WINDOW_SIZE,        // int[2] (w/h)
     VOCTRL_SET_UNFS_WINDOW_SIZE,        // int[2] (w/h)
-
-    VOCTRL_GET_WIN_STATE,               // int* (VO_WIN_STATE_* flags)
 
     // char *** (NULL terminated array compatible with CONF_TYPE_STRING_LIST)
     // names for displays the window is on
@@ -519,6 +525,12 @@ struct mp_image *vo_get_image(struct vo *vo, int imgfmt, int w, int h,
 
 void vo_wakeup(struct vo *vo);
 void vo_wait_default(struct vo *vo, int64_t until_time);
+
+// Internal for VO common code. VO backends do not call this.
+struct vo_win_state;
+void vo_set_internal_win_state(struct vo *vo, struct vo_win_state *st);
+int vo_win_state_fetch_ext_wrap(struct vo *vo, int state,
+                                union m_option_value *val);
 
 struct mp_keymap {
   int from;

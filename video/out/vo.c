@@ -45,6 +45,7 @@
 #include "sub/osd.h"
 #include "osdep/io.h"
 #include "osdep/threads.h"
+#include "win_state.h"
 
 extern const struct vo_driver video_out_mediacodec_embed;
 extern const struct vo_driver video_out_x11;
@@ -162,6 +163,8 @@ struct vo_internal {
 
     double display_fps;
     double reported_display_fps;
+
+    struct vo_win_state *win_state;
 };
 
 extern const struct m_sub_options gl_video_conf;
@@ -229,8 +232,10 @@ static void update_opts(void *p)
         read_opts(vo);
 
         // "Legacy" update of video position related options.
-        if (vo->driver->control)
+        if (vo->driver->control) {
             vo->driver->control(vo, VOCTRL_SET_PANSCAN, NULL);
+            vo->driver->control(vo, VOCTRL_VO_WIN_STATE_UPDATE, NULL);
+        }
     }
 
     if (vo->gl_opts_cache && m_config_cache_update(vo->gl_opts_cache)) {
@@ -1069,6 +1074,7 @@ static void *vo_thread(void *ptr)
     vo->driver->uninit(vo);
 done:
     TA_FREEP(&in->dr_helper);
+    assert(!in->win_state);
     return NULL;
 }
 
@@ -1350,6 +1356,32 @@ struct mp_image *vo_get_image(struct vo *vo, int imgfmt, int w, int h,
     if (vo->in->dr_helper)
         return dr_helper_get_image(vo->in->dr_helper, imgfmt, w, h, stride_align);
     return NULL;
+}
+
+void vo_set_internal_win_state(struct vo *vo, struct vo_win_state *st)
+{
+    struct vo_internal *in = vo->in;
+    pthread_mutex_lock(&in->lock);
+    assert(!!in->win_state != !!st); // can either set or unset it
+    in->win_state = st;
+    pthread_mutex_unlock(&in->lock);
+}
+
+int vo_win_state_fetch_ext_wrap(struct vo *vo, int state,
+                                union m_option_value *val)
+{
+    struct vo_internal *in = vo->in;
+    int res = -1;
+    pthread_mutex_lock(&in->lock);
+
+    if (in->win_state) {
+        res = vo_win_state_fetch_ext(in->win_state, state, val);
+    } else {
+        *val = (union m_option_value){0};
+    }
+
+    pthread_mutex_unlock(&in->lock);
+    return res;
 }
 
 static void destroy_frame(void *p)

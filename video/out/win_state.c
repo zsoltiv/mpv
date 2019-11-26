@@ -15,6 +15,11 @@
  * License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <pthread.h>
+
+#include "common/common.h"
+#include "options/m_config.h"
+#include "options/m_option.h"
 #include "win_state.h"
 #include "vo.h"
 
@@ -139,4 +144,179 @@ void vo_apply_window_geometry(struct vo *vo, const struct vo_win_geometry *geo)
     vo->dwidth = geo->win.x1 - geo->win.x0;
     vo->dheight = geo->win.y1 - geo->win.y0;
     vo->monitor_par = geo->monitor_par;
+}
+
+struct vo_win_state {
+    pthread_mutex_t lock;
+
+    struct vo *vo;
+
+    struct m_config_cache *opts_cache;
+    struct mp_vo_opts *opts;
+
+    struct m_option types[VO_WIN_STATE_COUNT];
+    void *opt_map[VO_WIN_STATE_COUNT];
+    uint64_t external_changed; // VO_WIN_STATE_* bit field
+    // If external_changed bit set, this is the external "fixed" value.
+    // Otherwise, this is the current/previous value.
+    union m_option_value fixed[VO_WIN_STATE_COUNT];
+
+    // These are not options.
+    int minimize, maximize;
+};
+
+static void win_state_destroy(void *p)
+{
+    struct vo_win_state *st = p;
+
+    vo_set_internal_win_state(st->vo, NULL);
+
+    pthread_mutex_destroy(&st->lock);
+}
+
+struct vo_win_state *vo_win_state_create(struct vo *vo)
+{
+    struct vo_win_state *st = talloc_zero(NULL, struct vo_win_state);
+    talloc_set_destructor(st, win_state_destroy);
+
+    pthread_mutex_init(&st->lock, NULL);
+
+    st->vo = vo;
+
+    st->opts_cache = m_config_cache_alloc(st, vo->global, &vo_sub_opts);
+    st->opts = st->opts_cache->opts;
+
+    st->opt_map[VO_WIN_STATE_FULLSCREEN] = &st->opts->fullscreen;
+    st->opt_map[VO_WIN_STATE_MINIMIZE] = &st->minimize;
+    st->opt_map[VO_WIN_STATE_MAXIMIZE] = &st->maximize;
+    st->opt_map[VO_WIN_STATE_ON_TOP] = &st->opts->ontop;
+    st->opt_map[VO_WIN_STATE_BORDER] = &st->opts->border;
+    st->opt_map[VO_WIN_STATE_ALL_WS] = &st->opts->all_workspaces;
+
+    for (int n = 0; n < MP_ARRAY_SIZE(st->opt_map); n++) {
+        // Currently all the same.
+        st->types[n] = (struct m_option){
+            .type = &m_option_type_flag,
+        };
+
+        // Copy initial value.
+        m_option_copy(&st->types[n], &st->fixed[n], st->opt_map[n]);
+    }
+
+    vo_set_internal_win_state(vo, st);
+    return st;
+}
+
+char *vo_win_state_opt(enum vo_win_states state)
+{
+    switch (state) {
+    case VO_WIN_STATE_FULLSCREEN:   return "fullscreen";
+    case VO_WIN_STATE_ON_TOP:       return "ontop";
+    case VO_WIN_STATE_BORDER:       return "border";
+    case VO_WIN_STATE_ALL_WS:       return "on-all-workspaces";
+    default: return NULL; // not managed as option
+    }
+}
+
+struct mp_vo_opts *vo_win_state_opts(struct vo_win_state *st)
+{
+    return st->opts;
+}
+
+// (The generic option code does not have this because it's too complex to
+// support for _all_ option types.)
+static bool opt_equals(struct m_option *t, void *v1, void *v2)
+{
+    if (t->type == &m_option_type_flag) {
+        return *(int *)v1 == *(int *)v2;
+    } else {
+        assert(0); // well, add it
+    }
+}
+
+uint64_t vo_win_state_update(struct vo_win_state *st)
+{
+    uint64_t changed = 0;
+
+    pthread_mutex_lock(&st->lock);
+
+    if (m_config_cache_update(st->opts_cache)) {
+        // Ignore changes to any "fixed" fields, but return other changed fields.
+        for (int n = 0; n < MP_ARRAY_SIZE(st->opt_map); n++) {
+            if (st->external_changed & (1ull << n))
+                m_option_copy(&st->types[n], st->opt_map[n], &st->fixed[n]);
+
+            if (!opt_equals(&st->types[n], st->opt_map[n], &st->fixed[n])) {
+                changed |= (1ull << n);
+
+                m_option_copy(&st->types[n], &st->fixed[n], st->opt_map[n]);
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&st->lock);
+
+    return changed;
+}
+
+bool vo_win_state_get_bool(struct vo_win_state *st, enum vo_win_states state)
+{
+    assert(st->types[state].type == &m_option_type_flag);
+    return *(int *)st->opt_map[state];
+}
+
+void vo_win_state_report_bool(struct vo_win_state *st, enum vo_win_states state,
+                              bool val)
+{
+    assert(st->types[state].type == &m_option_type_flag);
+    *(int *)st->opt_map[state] = val;
+    vo_win_state_report_external_changed(st, st->opt_map[state]);
+}
+
+void vo_win_state_report_external_changed(struct vo_win_state *st, void *field)
+{
+    int state = -1;
+    for (int n = 0; n < MP_ARRAY_SIZE(st->opt_map); n++) {
+        if (st->opt_map[n] == field) {
+            state = n;
+            break;
+        }
+    }
+
+    assert(state >= 0); // user passed non-managed field, or uses wrong opt. struct
+
+    // "Fix" the option to avoid that concurrent or recursive option updates
+    // clobber it (urgh).
+    pthread_mutex_lock(&st->lock);
+    st->external_changed |= 1ull << state;
+    m_option_copy(&st->types[state], &st->fixed[state], field);
+    pthread_mutex_unlock(&st->lock);
+
+    // Causes some magic code to call vo_win_state_fetch_ext() to reset the
+    // fixed option.
+    vo_event(st->vo, VO_EVENT_WIN_STATE2);
+}
+
+int vo_win_state_fetch_ext(struct vo_win_state *st, int state,
+                           union m_option_value *val)
+{
+    pthread_mutex_lock(&st->lock);
+
+    if (state < 0) {
+        for (int n = 0; n < MP_ARRAY_SIZE(st->opt_map); n++) {
+            uint64_t mask = 1ull << n;
+            if (st->external_changed & mask) {
+                st->external_changed &= ~mask;
+                state = n;
+                break;
+            }
+        }
+    }
+
+    if (state >= 0)
+        m_option_copy(&st->types[state], val, st->opt_map[state]);
+
+    pthread_mutex_unlock(&st->lock);
+
+    return state;
 }
