@@ -8,11 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/setup-python@v1.1.1
+    - uses: registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
     - uses: actions/checkout@v1
     - name: bootstrap
       run: ./bootstrap.py
-    - name: configure
-      run: ./waf configure
     - name: build
-      run: ./waf build
+      run: ./ci/build-tumbleweed.sh
