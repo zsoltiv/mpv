@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
+    - uses: docker://registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
     - uses: actions/checkout@v1
     - name: bootstrap
       run: ./bootstrap.py
