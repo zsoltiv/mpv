@@ -10,11 +10,10 @@ jobs:
     - uses: actions/checkout@v2
     - name: bootstrap
       run:  python3 ./bootstrap.py
-      env:
-        CXX: g++
     - name: build
       run: ./ci/build-tumbleweed.sh
       env:
+        CC: gcc
         CXX: g++
   linux-clang:
     runs-on: ubuntu-latest
@@ -23,15 +22,14 @@ jobs:
     - uses: actions/checkout@v2
     - name: bootstrap
       run:  python3 ./bootstrap.py
-      env:
-        CXX: clang++
     - name: build
       run: ./ci/build-tumbleweed.sh
       env:
+        CC: clang
         CXX: clang++
   mingw32:
     runs-on: ubuntu-latest
-    container: egistry.cirno.systems/kiwi/containers/mpv-ci-mingw64:i686
+    container: registry.cirno.systems/kiwi/containers/mpv-ci-mingw64:i686
     steps:
     - uses: actions/checkout@v2
     - name: bootstrap
@@ -44,7 +42,7 @@ jobs:
         TARGET: i686-w64-mingw32
   mingw64:
     runs-on: ubuntu-latest
-    container: egistry.cirno.systems/kiwi/containers/mpv-ci-mingw64:x86_64
+    container: registry.cirno.systems/kiwi/containers/mpv-ci-mingw64:x86_64
     steps:
     - uses: actions/checkout@v2
     - name: bootstrap
