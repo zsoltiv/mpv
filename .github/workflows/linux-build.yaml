@@ -6,9 +6,9 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    container: registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
     
     steps:
-    - uses: docker://registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
     - uses: actions/checkout@v1
     - name: bootstrap
       run: ./bootstrap.py
