@@ -1,16 +1,67 @@
-name: Build on Linux
+name: CI Build
 
 on: [push]
 
 jobs:
-  build:
-
+  linux-gcc:
     runs-on: ubuntu-latest
     container: registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
-    
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: bootstrap
       run:  python3 ./bootstrap.py
+      env:
+        CXX: g++
     - name: build
       run: ./ci/build-tumbleweed.sh
+      env:
+        CXX: g++
+  linux-clang:
+    runs-on: ubuntu-latest
+    container: registry.cirno.systems/kiwi/containers/mpv-ci:stable-deps
+    steps:
+    - uses: actions/checkout@v2
+    - name: bootstrap
+      run:  python3 ./bootstrap.py
+      env:
+        CXX: clang++
+    - name: build
+      run: ./ci/build-tumbleweed.sh
+      env:
+        CXX: clang++
+  mingw32:
+    runs-on: ubuntu-latest
+    container: egistry.cirno.systems/kiwi/containers/mpv-ci-mingw64:i686
+    steps:
+    - uses: actions/checkout@v2
+    - name: bootstrap
+      run:  python3 ./bootstrap.py
+      env:
+        TARGET: i686-w64-mingw32
+    - name: build
+      run: ./ci/build-mingw64.sh
+      env:
+        TARGET: i686-w64-mingw32
+  mingw64:
+    runs-on: ubuntu-latest
+    container: egistry.cirno.systems/kiwi/containers/mpv-ci-mingw64:x86_64
+    steps:
+    - uses: actions/checkout@v2
+    - name: bootstrap
+      run:  python3 ./bootstrap.py
+      env:
+        TARGET: x86_64-w64-mingw32
+    - name: build
+      run: ./ci/build-mingw64.sh
+      env:
+        TARGET: x86_64-w64-mingw32
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: ffmpeg
+        run:  ./ci/get_ffmpeg.sh
+      - name: bootstrap
+        run:  python3 ./bootstrap.py
+      - name: build
+        run:  ./ci/build-macos.sh
