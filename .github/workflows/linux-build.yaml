@@ -59,6 +59,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: ffmpeg
         run:  ./ci/get_ffmpeg.sh
+        env:
+          TRAVIS_OS_NAME: macos
       - name: bootstrap
         run:  python3 ./bootstrap.py
       - name: build
