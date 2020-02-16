@@ -32,6 +32,23 @@
 #include "osdep/io.h"
 #include "stream/stream.h"
 
+       #include <sys/syscall.h>
+       #include <unistd.h>
+       #include <poll.h>
+       #include <stdlib.h>
+       #include <stdio.h>
+
+       #ifndef __NR_pidfd_open
+       #define __NR_pidfd_open 434   /* System call # on most architectures */
+       #endif
+
+       static int
+       pidfd_open(pid_t pid, unsigned int flags)
+       {
+           return syscall(__NR_pidfd_open, pid, flags);
+       }
+
+
 extern char **environ;
 
 #define SAFE_CLOSE(fd) do { if ((fd) >= 0) close((fd)); (fd) = -1; } while (0)
@@ -48,6 +65,7 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
     bool spawned = false;
     bool killed_by_us = false;
     int cancel_fd = -1;
+    int pid_fd = -1;
 
     *res = (struct mp_subprocess_result){0};
 
@@ -119,9 +137,12 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
         SAFE_CLOSE(comm_pipe[n][1]);
     SAFE_CLOSE(devnull);
 
+    if (pid)
+        pid_fd = pidfd_open(pid, 0);
+
     while (1) {
-        struct pollfd fds[MP_SUBPROCESS_MAX_FDS + 1];
-        int map_fds[MP_SUBPROCESS_MAX_FDS + 1];
+        struct pollfd fds[MP_SUBPROCESS_MAX_FDS + 2];
+        int map_fds[MP_SUBPROCESS_MAX_FDS + 2];
         int num_fds = 0;
         for (int n = 0; n < opts->num_fds; n++) {
             if (comm_pipe[n][0] >= 0) {
@@ -132,8 +153,15 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
                 };
             }
         }
+
+        if (pid_fd >= 0) {
+            map_fds[num_fds] = -2;
+            fds[num_fds++] = (struct pollfd){.events = POLLIN, .fd = pid_fd};
+        }
+
         if (!num_fds)
             break;
+
         if (cancel_fd >= 0) {
             map_fds[num_fds] = -1;
             fds[num_fds++] = (struct pollfd){.events = POLLIN, .fd = cancel_fd};
@@ -145,12 +173,17 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
         for (int idx = 0; idx < num_fds; idx++) {
             if (fds[idx].revents) {
                 int n = map_fds[idx];
-                if (n < 0) {
+                if (n == -1) {
                     // cancel_fd
                     if (pid)
                         kill(pid, SIGKILL);
                     killed_by_us = true;
                     break;
+                } else if (n == -2) {
+                    // pid_fd
+                    // ignore until all pipes are read fully
+                    SAFE_CLOSE(pid_fd);
+                    printf("notify close\n");
                 } else {
                     char buf[4096];
                     ssize_t r = read(comm_pipe[n][0], buf, sizeof(buf));
@@ -158,8 +191,10 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
                         continue;
                     if (r > 0 && opts->fds[n].on_read)
                         opts->fds[n].on_read(opts->fds[n].on_read_ctx, buf, r);
-                    if (r <= 0)
+                    if (r <= 0) {
+                        printf("close %d \n", n);
                         SAFE_CLOSE(comm_pipe[n][0]);
+                    }
                 }
             }
         }
@@ -170,8 +205,12 @@ void mp_subprocess2(struct mp_subprocess_opts *opts,
     //       a separate thread and use pthread_cancel(), or use other weird
     //       and laborious tricks in order to react to mp_cancel.
     //       So this isn't handled yet.
-    if (pid)
+    //       Unless pidfd_open() is available.
+    if (pid) {
+        printf("waitpid start\n");
         while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+        printf("waitpid done\n");
+    }
 
 done:
     if (fa_destroy)
@@ -181,6 +220,7 @@ done:
         SAFE_CLOSE(comm_pipe[n][1]);
     }
     SAFE_CLOSE(devnull);
+    SAFE_CLOSE(pid_fd);
 
     if (!spawned || (pid && WIFEXITED(status) && WEXITSTATUS(status) == 127)) {
         res->error = MP_SUBPROCESS_EINIT;

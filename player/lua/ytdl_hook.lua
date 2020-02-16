@@ -743,3 +743,20 @@ mp.add_hook("on_preloaded", 10, function ()
         chapter_list = {}
     end
 end)
+
+mp.add_forced_key_binding("a", function()
+    print("starting")
+    local ret = mp.command_native_async(
+        {name = "subprocess", args = {"/tmp/test/pid_test"},
+                                   capture_stdout = true,
+                                   capture_stderr = true},
+        function(ok, res)
+            print("done " .. utils.format_table(res))
+        end)
+    print("started")
+    -- kill it after some time
+    mp.add_timeout(20, function()
+        print("killing it")
+        mp.abort_async_command(ret)
+    end)
+end)
