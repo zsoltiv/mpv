@@ -3192,13 +3192,24 @@ static void gl_video_interpolate_frame(struct gl_video *p, struct vo_frame *t,
             mix = 1 - mix;
         }
 
+        int first_frame = 0;
+        int num_frames = size;
+
         // Blend the frames together
         if (oversample || linear) {
-            gl_sc_uniform_dynamic(p->sc);
-            gl_sc_uniform_f(p->sc, "inter_coeff", mix);
-            GLSL(color = mix(texture(texture0, texcoord0),
-                             texture(texture1, texcoord1),
-                             inter_coeff);)
+            const float single_frame_delta = 1e-4;
+            if (mix < single_frame_delta || mix > 1.0 - single_frame_delta) {
+                // Optimize for the common case in which we only have one tex
+                GLSL(color = texture(texture0, texcoord0);)
+                first_frame = mix < single_frame_delta ? 0 : 1;
+                num_frames = 1;
+            } else {
+                gl_sc_uniform_dynamic(p->sc);
+                gl_sc_uniform_f(p->sc, "inter_coeff", mix);
+                GLSL(color = mix(texture(texture0, texcoord0),
+                                 texture(texture1, texcoord1),
+                                 inter_coeff);)
+            }
         } else {
             gl_sc_uniform_dynamic(p->sc);
             gl_sc_uniform_f(p->sc, "fcoord", mix);
@@ -3206,7 +3217,7 @@ static void gl_video_interpolate_frame(struct gl_video *p, struct vo_frame *t,
         }
 
         // Load all the required frames
-        for (int i = 0; i < size; i++) {
+        for (int i = first_frame; i < num_frames; i++) {
             struct image img =
                 image_wrap(p->surfaces[surface_wrap(surface_bse+i)].tex,
                            PLANE_RGB, p->components);
@@ -3214,7 +3225,7 @@ static void gl_video_interpolate_frame(struct gl_video *p, struct vo_frame *t,
             // the textures are bound in-order and starting at 0, we just
             // assert to make sure this is the case (which it should always be)
             int id = pass_bind(p, img);
-            assert(id == i);
+            assert(id == i - first_frame);
         }
 
         MP_TRACE(p, "inter frame dur: %f vsync: %f, mix: %f\n",
