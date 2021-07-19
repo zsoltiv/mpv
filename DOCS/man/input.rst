@@ -450,6 +450,10 @@ Remember to quote string arguments in input.conf (see `Flat command syntax`_).
         Stop playback and replace the internal playlist with the new one.
     <append>
         Append the new playlist at the end of the current internal playlist.
+    <append-play>
+        Append the new playlist, and if nothing is currently playing, start
+        playback. (Always starts with the new playlist, even if the internal
+        playlist was not empty before running this command.)
 
 ``playlist-clear``
     Clear the playlist, except the currently played file.
@@ -679,15 +683,29 @@ Remember to quote string arguments in input.conf (see `Flat command syntax`_).
 
     This works by unloading and re-adding the subtitle track.
 
-``sub-step <skip>``
+``sub-step <skip> <flags>``
     Change subtitle timing such, that the subtitle event after the next
     ``<skip>`` subtitle events is displayed. ``<skip>`` can be negative to step
     backwards.
 
-``sub-seek <skip>``
+    Secondary argument:
+
+    primary (default)
+        Steps through the primary subtitles.
+    secondary
+        Steps through the secondary subtitles.
+
+``sub-seek <skip> <flags>``
     Seek to the next (skip set to 1) or the previous (skip set to -1) subtitle.
     This is similar to ``sub-step``, except that it seeks video and audio
     instead of adjusting the subtitle delay.
+
+    Secondary argument:
+
+    primary (default)
+        Seeks through the primary subtitles.
+    secondary
+        Seeks through the secondary subtitles.
 
     For embedded subtitles (like with Matroska), this works only with subtitle
     events that have already been displayed, or are within a short prefetch
@@ -814,9 +832,9 @@ Remember to quote string arguments in input.conf (see `Flat command syntax`_).
     Reload the given video tracks. See ``sub-reload`` command.
 
 ``rescan-external-files [<mode>]``
-    Rescan external files according to the current ``--sub-auto`` and
-    ``--audio-file-auto`` settings. This can be used to auto-load external
-    files *after* the file was loaded.
+    Rescan external files according to the current ``--sub-auto``,
+    ``--audio-file-auto`` and ``--cover-art-auto`` settings. This can be used
+    to auto-load external files *after* the file was loaded.
 
     The ``mode`` argument is one of the following:
 
@@ -2502,8 +2520,7 @@ Property list
     ways. The property is unavailable if no video is active.
 
 ``focused``
-    Whether the window has focus. Currently works only on X11, Wayland and
-    macOS.
+    Whether the window has focus. Might not be supported by all VOs.
 
 ``display-names``
     Names of the displays that the mpv window covers. On X11, these
@@ -2625,16 +2642,25 @@ Property list
 
     This property is experimental and might be removed in the future.
 
+``secondary-sub-text``
+    Same as ``sub-text``, but for the secondary subtitles.
+
 ``sub-start``
     The current subtitle start time (in seconds). If there's multiple current
     subtitles, returns the first start time. If no current subtitle is present
     null is returned instead.
+
+``secondary-sub-start``
+    Same as ``sub-start``, but for the secondary subtitles.
 
 ``sub-end``
     The current subtitle end time (in seconds). If there's multiple current
     subtitles, return the last end time. If no current subtitle is present, or
     if it's present but has unknown or incorrect duration, null is returned
     instead.
+
+``secondary-sub-end``
+    Same as ``sub-end``, but for the secondary subtitles.
 
 ``playlist-pos`` (RW)
     Current position on playlist. The first entry is on position 0. Writing to
@@ -3376,7 +3402,7 @@ You can access (almost) all options as properties, though there are some
 caveats with some properties (due to historical reasons):
 
 ``vid``, ``aid``, ``sid``
-    While playback is active, these result the actually active tracks. For
+    While playback is active, these return the actually active tracks. For
     example, if you set ``aid=5``, and the currently played file contains no
     audio track with ID 5, the ``aid`` property will return ``no``.
 

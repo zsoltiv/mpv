@@ -218,11 +218,11 @@ static void draw_image(struct vo *vo, struct mp_image *src)
     struct priv *p = vo->priv;
     struct vo_wayland_state *wl = vo->wl;
     struct buffer *buf;
-
-    if (wl->hidden)
-        return;
-
+    bool render = !wl->hidden || wl->opts->disable_vsync;
     wl->frame_wait = true;
+
+    if (!render)
+        return;
 
     buf = p->free_buffers;
     if (buf) {
@@ -278,7 +278,7 @@ static void flip_page(struct vo *vo)
         vo_wayland_wait_frame(wl);
 
     if (wl->presentation)
-        wayland_sync_swap(wl);
+        vo_wayland_sync_swap(wl);
 }
 
 static void get_vsync(struct vo *vo, struct vo_vsync_info *info)

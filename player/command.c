@@ -2830,12 +2830,12 @@ static int mp_property_sub_pos(void *ctx, struct m_property *prop,
     return mp_property_generic_option(mpctx, prop, action, arg);
 }
 
-static int mp_property_sub_text(void *ctx, struct m_property *prop,
-                                int action, void *arg)
+static int get_sub_text(void *ctx, struct m_property *prop,
+                        int action, void *arg, int sub_index)
 {
     int type = *(int *)prop->priv;
     MPContext *mpctx = ctx;
-    struct track *track = mpctx->current_track[0][STREAM_SUB];
+    struct track *track = mpctx->current_track[sub_index][STREAM_SUB];
     struct dec_sub *sub = track ? track->d_sub : NULL;
     double pts = mpctx->playback_pts;
     if (!sub || pts == MP_NOPTS_VALUE)
@@ -2856,12 +2856,25 @@ static int mp_property_sub_text(void *ctx, struct m_property *prop,
     return M_PROPERTY_NOT_IMPLEMENTED;
 }
 
+static int mp_property_sub_text(void *ctx, struct m_property *prop,
+                                int action, void *arg)
+{
+    return get_sub_text(ctx, prop, action, arg, 0);
+}
+
+static int mp_property_secondary_sub_text(void *ctx, struct m_property *prop,
+                                          int action, void *arg)
+{
+    return get_sub_text(ctx, prop, action, arg, 1);
+}
+
 static struct sd_times get_times(void *ctx, struct m_property *prop,
                                 int action, void *arg)
 {
     struct sd_times res = { .start = MP_NOPTS_VALUE, .end = MP_NOPTS_VALUE };
     MPContext *mpctx = ctx;
-    struct track *track = mpctx->current_track[0][STREAM_SUB];
+    int track_ind = *(int *)prop->priv;
+    struct track *track = mpctx->current_track[track_ind][STREAM_SUB];
     struct dec_sub *sub = track ? track->d_sub : NULL;
     double pts = mpctx->playback_pts;
     if (!sub || pts == MP_NOPTS_VALUE)
@@ -3658,10 +3671,18 @@ static const struct m_property mp_properties_base[] = {
     {"sub-pos", mp_property_sub_pos},
     {"sub-text", mp_property_sub_text,
         .priv = (void *)&(const int){SD_TEXT_TYPE_PLAIN}},
+    {"secondary-sub-text", mp_property_secondary_sub_text,
+        .priv = (void *)&(const int){SD_TEXT_TYPE_PLAIN}},
     {"sub-text-ass", mp_property_sub_text,
         .priv = (void *)&(const int){SD_TEXT_TYPE_ASS}},
-    {"sub-start", mp_property_sub_start},
-    {"sub-end", mp_property_sub_end},
+    {"sub-start", mp_property_sub_start,
+        .priv = (void *)&(const int){0}},
+    {"secondary-sub-start", mp_property_sub_start,
+        .priv = (void *)&(const int){1}},
+    {"sub-end", mp_property_sub_end,
+        .priv = (void *)&(const int){0}},
+    {"secondary-sub-end", mp_property_sub_end,
+        .priv = (void *)&(const int){1}},
 
     {"vf", mp_property_vf},
     {"af", mp_property_af},
@@ -3738,10 +3759,10 @@ static const char *const *const mp_event_property_change[] = {
       "estimated-vf-fps", "drop-frame-count", "vo-drop-frame-count",
       "total-avsync-change", "audio-speed-correction", "video-speed-correction",
       "vo-delayed-frame-count", "mistimed-frame-count", "vsync-ratio",
-      "estimated-display-fps", "vsync-jitter", "sub-text", "audio-bitrate",
-      "video-bitrate", "sub-bitrate", "decoder-frame-drop-count",
+      "estimated-display-fps", "vsync-jitter", "sub-text", "secondary-sub-text",
+      "audio-bitrate", "video-bitrate", "sub-bitrate", "decoder-frame-drop-count",
       "frame-drop-count", "video-frame-info", "vf-metadata", "af-metadata",
-      "sub-start", "sub-end"),
+      "sub-start", "sub-end", "secondary-sub-start", "secondary-sub-end"),
     E(MP_EVENT_DURATION_UPDATE, "duration"),
     E(MPV_EVENT_VIDEO_RECONFIG, "video-out-params", "video-params",
       "video-format", "video-codec", "video-bitrate", "dwidth", "dheight",
@@ -3762,7 +3783,7 @@ static const char *const *const mp_event_property_change[] = {
       "demuxer-cache-state"),
     E(MP_EVENT_WIN_RESIZE, "current-window-scale", "osd-width", "osd-height",
       "osd-par", "osd-dimensions"),
-    E(MP_EVENT_WIN_STATE, "display-names", "display-fps" "display-width",
+    E(MP_EVENT_WIN_STATE, "display-names", "display-fps", "display-width",
       "display-height"),
     E(MP_EVENT_WIN_STATE2, "display-hidpi-scale"),
     E(MP_EVENT_FOCUS, "focused"),
@@ -5014,13 +5035,14 @@ static void cmd_sub_step_seek(void *p)
     struct mp_cmd_ctx *cmd = p;
     struct MPContext *mpctx = cmd->mpctx;
     bool step = *(bool *)cmd->priv;
+    int track_ind = cmd->args[1].v.i;
 
     if (!mpctx->playback_initialized) {
         cmd->success = false;
         return;
     }
 
-    struct track *track = mpctx->current_track[0][STREAM_SUB];
+    struct track *track = mpctx->current_track[track_ind][STREAM_SUB];
     struct dec_sub *sub = track ? track->d_sub : NULL;
     double refpts = get_current_time(mpctx);
     if (sub && refpts != MP_NOPTS_VALUE) {
@@ -5130,7 +5152,7 @@ static void cmd_loadlist(void *p)
     struct mp_cmd_ctx *cmd = p;
     struct MPContext *mpctx = cmd->mpctx;
     char *filename = cmd->args[0].v.s;
-    bool append = cmd->args[1].v.i;
+    int append = cmd->args[1].v.i;
 
     struct playlist *pl = playlist_parse_file(filename, cmd->abort->cancel,
                                               mpctx->global);
@@ -5147,7 +5169,7 @@ static void cmd_loadlist(void *p)
         if (!new)
             new = playlist_get_first(mpctx->playlist);
 
-        if (!append && new)
+        if ((!append || (append == 2 && !mpctx->playlist->current)) && new)
             mp_set_playlist_entry(mpctx, new);
 
         struct mpv_node *res = &cmd->result;
@@ -6052,10 +6074,28 @@ const struct mp_cmd_def mp_cmds[] = {
     },
     { "playlist-shuffle", cmd_playlist_shuffle, },
     { "playlist-unshuffle", cmd_playlist_unshuffle, },
-    { "sub-step", cmd_sub_step_seek, { {"skip", OPT_INT(v.i)} },
-        .allow_auto_repeat = true, .priv = &(const bool){true} },
-    { "sub-seek", cmd_sub_step_seek, { {"skip", OPT_INT(v.i)} },
-        .allow_auto_repeat = true, .priv = &(const bool){false} },
+    { "sub-step", cmd_sub_step_seek,
+        {
+            {"skip", OPT_INT(v.i)},
+            {"flags", OPT_CHOICE(v.i,
+                {"primary", 0},
+                {"secondary", 1}),
+                OPTDEF_INT(0)},
+        },
+        .allow_auto_repeat = true,
+        .priv = &(const bool){true}
+    },
+    { "sub-seek", cmd_sub_step_seek,
+        {
+            {"skip", OPT_INT(v.i)},
+            {"flags", OPT_CHOICE(v.i,
+                {"primary", 0},
+                {"secondary", 1}),
+                OPTDEF_INT(0)},
+        },
+        .allow_auto_repeat = true,
+        .priv = &(const bool){false}
+    },
     { "print-text", cmd_print_text, { {"text", OPT_STRING(v.s)} },
         .is_noisy = true, .allow_auto_repeat = true },
     { "show-text", cmd_show_text,
@@ -6203,7 +6243,10 @@ const struct mp_cmd_def mp_cmds[] = {
     { "loadlist", cmd_loadlist,
         {
             {"url", OPT_STRING(v.s)},
-            {"flags", OPT_CHOICE(v.i, {"replace", 0}, {"append", 1}),
+            {"flags", OPT_CHOICE(v.i,
+                {"replace", 0},
+                {"append", 1},
+                {"append-play", 2}),
                 .flags = MP_CMD_OPT_ARG},
         },
         .spawn_thread = true,

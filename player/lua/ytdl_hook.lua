@@ -38,6 +38,16 @@ function iif(cond, if_true, if_false)
     return if_false
 end
 
+-- youtube-dl JSON name to mpv tag name
+local tag_list = {
+    ["uploader"]        = "uploader",
+    ["channel_url"]     = "channel_url",
+    -- these titles tend to be a bit too long, so hide them on the terminal
+    -- (default --display-tags does not include this name)
+    ["description"]     = "ytdl_description",
+    -- "title" is handled by force-media-title
+}
+
 local safe_protos = Set {
     "http", "https", "ftp", "ftps",
     "rtmp", "rtmps", "rtmpe", "rtmpt", "rtmpts", "rtmpte",
@@ -341,6 +351,20 @@ local function as_integer(v, def)
     return def
 end
 
+local function tags_to_edl(json)
+    local tags = {}
+    for json_name, mp_name in pairs(tag_list) do
+        local v = json[json_name]
+        if v then
+            tags[#tags + 1] = mp_name .. "=" .. edl_escape(tostring(v))
+        end
+    end
+    if #tags == 0 then
+        return nil
+    end
+    return "!global_tags," .. table.concat(tags, ",")
+end
+
 -- Convert a format list from youtube-dl to an EDL URL, or plain URL.
 --  json: full json blob by youtube-dl
 --  formats: format list by youtube-dl
@@ -475,6 +499,11 @@ local function formats_to_edl(json, formats, use_all_formats)
     if #streams == 1 and single_url then
         res.url = single_url
     elseif #streams > 0 then
+        local tags = tags_to_edl(json)
+        if tags then
+            -- not a stream; just for the sake of concatenating the EDL string
+            streams[#streams + 1] = tags
+        end
         res.url = "edl://" .. table.concat(streams, ";")
     else
         return nil
@@ -764,30 +793,32 @@ function run_ytdl_hook(url)
         return
     end
 
-    if (es < 0) or (json == nil) or (json == "") then
+    local parse_err = nil
+
+    if (es < 0) or (json == "") then
+        json = nil
+    elseif json then
+        json, parse_err = utils.parse_json(json)
+    end
+
+    if (json == nil) then
         -- trim our stderr to avoid spurious newlines
         ytdl_err = result.stderr:gsub("^%s*(.-)%s*$", "%1")
         msg.error(ytdl_err)
         local err = "youtube-dl failed: "
         if result.error_string and result.error_string == "init" then
             err = err .. "not found or not enough permissions"
+        elseif parse_err then
+            err = err .. "failed to parse JSON data: " .. parse_err
         elseif not result.killed_by_us then
             err = err .. "unexpected error occurred"
         else
             err = string.format("%s returned '%d'", err, es)
         end
         msg.error(err)
-        if string.find(ytdl_err, "yt%-dl%.org/bug") then
+        if parse_err or string.find(ytdl_err, "yt%-dl%.org/bug") then
             check_version(ytdl.path)
         end
-        return
-    end
-
-    local json, err = utils.parse_json(json)
-
-    if (json == nil) then
-        msg.error("failed to parse JSON data: " .. err)
-        check_version(ytdl.path)
         return
     end
 

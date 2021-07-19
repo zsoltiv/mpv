@@ -181,7 +181,7 @@ changes come and talk to us on IRC before you start working on them. It will
 make code review easier for both parties later on.
 
 You can check [the wiki](https://github.com/mpv-player/mpv/wiki/Stuff-to-do)
-or the [issue tracker](https://github.com/mpv-player/mpv/issues?q=is%3Aopen+is%3Aissue+label%3A%22feature+request%22)
+or the [issue tracker](https://github.com/mpv-player/mpv/issues?q=is%3Aopen+is%3Aissue+label%3Ameta%3Afeature-request)
 for ideas on what you could contribute with.
 
 ## License
@@ -201,8 +201,8 @@ see the [FAQ][FAQ].
 Most activity happens on the IRC channel and the github issue tracker.
 
 - **GitHub issue tracker**: [issue tracker][issue-tracker] (report bugs here)
-- **User IRC Channel**: `#mpv` on `irc.freenode.net`
-- **Developer IRC Channel**: `#mpv-devel` on `irc.freenode.net`
+- **User IRC Channel**: `#mpv` on `irc.libera.chat`
+- **Developer IRC Channel**: `#mpv-devel` on `irc.libera.chat`
 
 [FAQ]: https://github.com/mpv-player/mpv/wiki/FAQ
 [releases]: https://github.com/mpv-player/mpv/releases

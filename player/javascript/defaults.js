@@ -665,6 +665,8 @@ mp.get_time = function() { return mp.get_time_ms() / 1000 };
 mp.utils.getcwd = function() { return mp.get_property("working-directory") };
 mp.utils.getpid = function() { return mp.get_property_number("pid") }
 mp.get_mouse_pos = function() { return mp.get_property_native("mouse-pos") };
+mp.utils.write_file = mp.utils._write_file.bind(null, false);
+mp.utils.append_file = mp.utils._write_file.bind(null, true);
 mp.dispatch_event = dispatch_event;
 mp.process_timers = process_timers;
 mp.notify_idle_observers = notify_idle_observers;
@@ -749,7 +751,7 @@ g.mp_event_loop = function mp_event_loop() {
             wait = 0;  // poll the next one
         } else {
             wait = process_timers() / 1000;
-            if (wait != 0) {
+            if (wait != 0 && iobservers.length) {
                 notify_idle_observers();  // can add timers -> recalculate wait
                 wait = peek_timers_wait() / 1000;
             }

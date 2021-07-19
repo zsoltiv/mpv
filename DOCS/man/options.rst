@@ -2101,7 +2101,7 @@ Audio
 
     :no:    Don't automatically load external audio files (default).
     :exact: Load the media filename with audio file extension.
-    :fuzzy: Load all audio files containing media filename.
+    :fuzzy: Load all audio files containing the media filename.
     :all:   Load all audio files in the current and ``--audio-file-paths``
             directories.
 
@@ -2481,7 +2481,7 @@ Subtitles
     :no:    Don't automatically load external subtitle files.
     :exact: Load the media filename with subtitle file extension and possibly
             language suffixes (default).
-    :fuzzy: Load all subs containing media filename.
+    :fuzzy: Load all subs containing the media filename.
     :all:   Load all subs in the current and ``--sub-file-paths`` directories.
 
 ``--sub-codepage=<codepage>``
@@ -2585,6 +2585,15 @@ Subtitles
     Can be used to disable display of subtitles, but still select and decode
     them.
 
+``--secondary-sub-visibility``, ``--no-secondary-sub-visibility``
+    Can be used to disable display of secondary subtitles, but still select and
+    decode them.
+
+    .. note::
+
+        If ``--sub-visibility=no``, secondary subtitles are hidden regardless of
+        ``--secondary-sub-visibility``.
+
 ``--sub-clear-on-seek``
     (Obscure, rarely useful.) Can be used to play broken mkv files with
     duplicate ReadOrder fields. ReadOrder is the first field in a
@@ -2596,6 +2605,13 @@ Subtitles
 ``--teletext-page=<1-999>``
     This works for ``dvb_teletext`` subtitle streams, and if FFmpeg has been
     compiled with support for it.
+
+``--sub-past-video-end``
+    After the last frame of video, if this option is enabled, subtitles will
+    continue to update based on audio timestamps. Otherwise, the subtitles
+    for the last video frame will stay onscreen.
+
+    Default: disabled
 
 ``--sub-font=<name>``
     Specify font to use for subtitles that do not themselves
@@ -5289,6 +5305,12 @@ The following video options are currently all specific to ``--vo=gpu`` and
     results, as can missing or incorrect display FPS information (see
     ``--override-display-fps``).
 
+``--vulkan-device=<device name>``
+    The name of the Vulkan device to use for rendering and presentation. Use
+    ``--vulkan-device=help`` to see the list of available devices and their
+    names. If left unspecified, the first enumerated hardware Vulkan device will
+    be used.
+
 ``--vulkan-swap-mode=<mode>``
     Controls the presentation mode of the vulkan swapchain. This is similar
     to the ``--opengl-swapinterval`` option.
@@ -5332,6 +5354,25 @@ The following video options are currently all specific to ``--vo=gpu`` and
     Disable the use of VkEvents, for debugging purposes or for compatibility
     with some older drivers / vulkan portability layers that don't provide
     working VkEvent support.
+
+``--vulkan-display-display=<n>``
+    The index of the display, on the selected Vulkan device, to present on when
+    using the ``displayvk`` GPU context. Use ``--vulkan-display-display=help``
+    to see the list of available displays. If left unspecified, the first
+    enumerated display will be used.
+
+
+``--vulkan-display-mode=<n>``
+    The index of the display mode, of the selected Vulkan display, to use when
+    using the ``displayvk`` GPU context. Use ``--vulkan-display-mode=help``
+    to see the list of available modes. If left unspecified, the first
+    enumerated mode will be used.
+
+``--vulkan-display-plane=<n>``
+    The index of the plane, on the selected Vulkan device, to present on when
+    using the ``displayvk`` GPU context. Use ``--vulkan-display-plane=help``
+    to see the list of available planes. If left unspecified, the first
+    enumerated plane will be used.
 
 ``--d3d11-exclusive-fs=<yes|no>``
     Switches the D3D11 swap chain fullscreen state to 'fullscreen' when
@@ -5414,8 +5455,7 @@ The following video options are currently all specific to ``--vo=gpu`` and
     Currently only relevant for ``--gpu-api=d3d11``.
 
 ``--wayland-app-id=<string>``
-    Set the client app id for Wayland-based video output methods. By default, "mpv"
-    is used.
+    Set the client app id for Wayland-based video output methods (default: ``mpv``).
 
 ``--wayland-disable-vsync=<yes|no>``
     Disable vsync for the wayland contexts (default: no). Useful for benchmarking
@@ -5979,6 +6019,10 @@ The following video options are currently all specific to ``--vo=gpu`` and
         VK_KHR_wayland_surface
     drm
         DRM/EGL
+    displayvk
+        VK_KHR_display. This backend is roughly the Vukan equivalent of
+        DRM/EGL, allowing for direct rendering via Vulkan without a display
+        manager.
     x11egl
         X11/EGL
     android
@@ -6358,14 +6402,15 @@ The following video options are currently all specific to ``--vo=gpu`` and
     Size of the 3D LUT generated from the ICC profile in each dimension.
     Default is 64x64x64. Sizes may range from 2 to 512.
 
-``--icc-contrast=<0-1000000|inf>``
-    Specifies an upper limit on the target device's contrast ratio. This is
-    detected automatically from the profile if possible, but for some profiles
-    it might be missing, causing the contrast to be assumed as infinite. As a
-    result, video may appear darker than intended. This only affects BT.1886
-    content. The default of 0 means no limit if the detected contrast is less
-    than 100000, and limits to 1000 otherwise. Use ``--icc-contrast=inf`` to
-    preserve the infinite contrast (most likely when using OLED displays).
+``--icc-force-contrast=<no|0-1000000|inf>``
+    Override the target device's detected contrast ratio by a specific value.
+    This is detected automatically from the profile if possible, but for some
+    profiles it might be missing, causing the contrast to be assumed as
+    infinite. As a result, video may appear darker than intended. If this is
+    the case, setting this option might help. This only affects BT.1886
+    content. The default of ``no`` means to use the profile values. The special
+    value ``inf`` causes the BT.1886 curve to be treated as a pure power gamma
+    2.4 function.
 
 ``--blend-subtitles=<yes|video|no>``
     Blend subtitles directly onto upscaled video frames, before interpolation
@@ -6566,11 +6611,10 @@ Miscellaneous
                         video. (Although it should have the same effects as
                         ``audio``, the implementation is very different.)
     :display-adrop:     Drop or repeat audio data to compensate desyncing
-                        video. See ``--video-sync-adrop-size``. This mode will
-                        cause severe audio artifacts if the real monitor
-                        refresh rate is too different from the reported or
-                        forced rate. Since mpv 0.33.0, this acts on entire audio
-                        frames, instead of single samples.
+                        video. This mode will cause severe audio artifacts if
+                        the real monitor refresh rate is too different from
+                        the reported or forced rate. Since mpv 0.33.0, this
+                        acts on entire audio frames, instead of single samples.
     :display-desync:    Sync video to display, and let audio play on its own.
     :desync:            Sync video according to system clock, and let audio play
                         on its own.
@@ -6694,12 +6738,15 @@ Miscellaneous
     option will add a new external file.
 
 ``--cover-art-auto=<no|fuzzy>``
-    Whether to load _external_ cover art automatically (default: fuzzy). Similar
-    to ``--sub-auto`` and ``--audio-file-auto``. However, it's currently limited
-    to picking up a whitelist of "album art" filenames (such as ``cover.jpg``),
-    so currently only the ``fuzzy`` choice is available. In addition, if a video
-    already has tracks (which are not marked as cover art), external cover art
-    will not be loaded.
+    Whether to load _external_ cover art automatically. Similar to
+    ``--sub-auto`` and ``--audio-file-auto``. If a video already has tracks
+    (which are not marked as cover art), external cover art will not be loaded.
+
+    :no:    Don't automatically load cover art.
+    :exact: Load the media filename with an image file extension.
+    :fuzzy: Load all cover art containing the media filename and filenames
+            in an internal whitelist, such as ``cover.jpg`` (default).
+    :all:   Load all images in the current directory.
 
     See ``--cover-art-files`` for details about what constitutes cover art.
 
@@ -6710,8 +6757,9 @@ Miscellaneous
     Automatically load/select external files (default: yes).
 
     If set to ``no``, then do not automatically load external files as specified
-    by ``--sub-auto`` and ``--audio-file-auto``. If external files are forcibly
-    added (like with ``--sub-files``), they will not be auto-selected.
+    by ``--sub-auto``, ``--audio-file-auto`` and ``--cover-art-auto``. If
+    external files are forcibly added (like with ``--sub-files``), they will
+    not be auto-selected.
 
     This does not affect playlist expansion, redirection, or other loading of
     referenced files like with ordered chapters.

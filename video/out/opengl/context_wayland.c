@@ -25,9 +25,6 @@
 #include "egl_helpers.h"
 #include "utils.h"
 
-// Generated from presentation-time.xml
-#include "generated/wayland/presentation-time.h"
-
 #define EGL_PLATFORM_WAYLAND_EXT 0x31D8
 
 struct priv {
@@ -50,8 +47,6 @@ static void resize(struct ra_ctx *ctx)
     const int32_t height = wl->scaling * mp_rect_h(wl->geometry);
 
     vo_wayland_set_opaque_region(wl, ctx->opts.want_alpha);
-    wl_surface_set_buffer_scale(wl->surface, wl->scaling);
-
     if (p->egl_window)
         wl_egl_window_resize(p->egl_window, width, height, 0, 0);
 
@@ -63,14 +58,8 @@ static bool wayland_egl_start_frame(struct ra_swapchain *sw, struct ra_fbo *out_
 {
     struct ra_ctx *ctx = sw->ctx;
     struct vo_wayland_state *wl = ctx->vo->wl;
-
     bool render = !wl->hidden || wl->opts->disable_vsync;
-
-    if (wl->frame_wait && wl->presentation)
-        vo_wayland_sync_clear(wl);
-
-    if (render)
-        wl->frame_wait = true;
+    wl->frame_wait = true;
 
     return render ? ra_gl_ctx_start_frame(sw, out_fbo) : false;
 }
@@ -87,12 +76,12 @@ static void wayland_egl_swap_buffers(struct ra_swapchain *sw)
         vo_wayland_wait_frame(wl);
 
     if (wl->presentation)
-        wayland_sync_swap(wl);
+        vo_wayland_sync_swap(wl);
 }
 
 static const struct ra_swapchain_fns wayland_egl_swapchain = {
-    .start_frame   = wayland_egl_start_frame,
-    .swap_buffers  = wayland_egl_swap_buffers,
+    .start_frame  = wayland_egl_start_frame,
+    .swap_buffers = wayland_egl_swap_buffers,
 };
 
 static void wayland_egl_get_vsync(struct ra_ctx *ctx, struct vo_vsync_info *info)

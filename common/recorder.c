@@ -23,6 +23,7 @@
 #include "common/common.h"
 #include "common/global.h"
 #include "common/msg.h"
+#include "demux/demux.h"
 #include "demux/packet.h"
 #include "demux/stheader.h"
 
@@ -91,6 +92,12 @@ static int add_stream(struct mp_recorder *priv, struct sh_stream *sh)
     if (!avp)
         return -1;
 
+    // Check if we get the same codec_id for the output format;
+    // otherwise clear it to have a chance at muxing
+    if (av_codec_get_id(priv->mux->oformat->codec_tag,
+                        avp->codec_tag) != avp->codec_id)
+        avp->codec_tag = 0;
+
     // We don't know the delay, so make something up. If the format requires
     // DTS, the result will probably be broken. FFmpeg provides nothing better
     // yet (unless you demux with libavformat, which contains tons of hacks
@@ -113,7 +120,9 @@ static int add_stream(struct mp_recorder *priv, struct sh_stream *sh)
 struct mp_recorder *mp_recorder_create(struct mpv_global *global,
                                        const char *target_file,
                                        struct sh_stream **streams,
-                                       int num_streams)
+                                       int num_streams,
+                                       struct demux_attachment **attachments,
+                                       int num_attachments)
 {
     struct mp_recorder *priv = talloc_zero(NULL, struct mp_recorder);
 
@@ -144,6 +153,35 @@ struct mp_recorder *mp_recorder_create(struct mpv_global *global,
         if (add_stream(priv, streams[n]) < 0) {
             MP_ERR(priv, "Can't mux one of the input streams.\n");
             goto error;
+        }
+    }
+
+    if (!strcmp(priv->mux->oformat->name, "matroska")) {
+        // Only attach attachments (fonts) to matroska - mp4, nut, mpegts don't
+        // like them, and we find that out too late in the muxing process.
+        AVStream *a_stream = NULL;
+        for (int i = 0; i < num_attachments; ++i) {
+            a_stream = avformat_new_stream(priv->mux, NULL);
+            if (!a_stream) {
+                MP_ERR(priv, "Can't mux one of the attachments.\n");
+                goto error;
+            }
+            struct demux_attachment *attachment = attachments[i];
+
+            a_stream->codecpar->codec_type = AVMEDIA_TYPE_ATTACHMENT;
+
+            a_stream->codecpar->extradata  = av_mallocz(
+                attachment->data_size + AV_INPUT_BUFFER_PADDING_SIZE
+            );
+            if (!a_stream->codecpar->extradata) {
+                goto error;
+            }
+            memcpy(a_stream->codecpar->extradata,
+                attachment->data, attachment->data_size);
+            a_stream->codecpar->extradata_size = attachment->data_size;
+
+            av_dict_set(&a_stream->metadata, "filename", attachment->name, 0);
+            av_dict_set(&a_stream->metadata, "mimetype", attachment->type, 0);
         }
     }
 
@@ -217,30 +255,19 @@ static void mux_packet(struct mp_recorder_sink *rst,
         MP_ERR(priv, "Failed writing packet.\n");
 }
 
-// Write all packets that currently can be written.
-static void mux_packets(struct mp_recorder_sink *rst, bool force)
+// Write all packets available in the stream queue
+static void mux_packets(struct mp_recorder_sink *rst)
 {
     struct mp_recorder *priv = rst->owner;
     if (!priv->muxing || !rst->num_packets)
         return;
 
-    int safe_count = 0;
     for (int n = 0; n < rst->num_packets; n++) {
-        if (rst->packets[n]->keyframe)
-            safe_count = n;
-    }
-    if (force)
-        safe_count = rst->num_packets;
-
-    for (int n = 0; n < safe_count; n++) {
         mux_packet(rst, rst->packets[n]);
         talloc_free(rst->packets[n]);
     }
 
-    // Remove packets[0..safe_count]
-    memmove(&rst->packets[0], &rst->packets[safe_count],
-            (rst->num_packets - safe_count) * sizeof(rst->packets[0]));
-    rst->num_packets -= safe_count;
+    rst->num_packets = 0;
 }
 
 // If there was a discontinuity, check whether we can resume muxing (and from
@@ -291,7 +318,7 @@ void mp_recorder_destroy(struct mp_recorder *priv)
     if (priv->opened) {
         for (int n = 0; n < priv->num_streams; n++) {
             struct mp_recorder_sink *rst = priv->streams[n];
-            mux_packets(rst, true);
+            mux_packets(rst);
         }
 
         if (av_write_trailer(priv->mux) < 0)
@@ -312,15 +339,15 @@ void mp_recorder_destroy(struct mp_recorder *priv)
 // This is called on a seek, or when recording was started mid-stream.
 void mp_recorder_mark_discontinuity(struct mp_recorder *priv)
 {
-    flush_packets(priv);
 
     for (int n = 0; n < priv->num_streams; n++) {
         struct mp_recorder_sink *rst = priv->streams[n];
-        mux_packets(rst, true);
+        mux_packets(rst);
         rst->discont = true;
         rst->proper_eof = false;
     }
 
+    flush_packets(priv);
     priv->muxing = false;
     priv->muxing_from_start = false;
 }
@@ -350,7 +377,7 @@ void mp_recorder_feed_packet(struct mp_recorder_sink *rst,
     if (!pkt) {
         rst->proper_eof = true;
         check_restart(priv);
-        mux_packets(rst, false);
+        mux_packets(rst);
         return;
     }
 
@@ -359,7 +386,7 @@ void mp_recorder_feed_packet(struct mp_recorder_sink *rst,
         // No, FFmpeg doesn't tell us which formats need DTS at all.
         // No, we can not shut up the FFmpeg warning, which will follow.
         MP_WARN(priv, "Source stream misses DTS on at least some packets!\n"
-                      "If the target file format requires DTS, the written\n"
+                      "If the target file format requires DTS, the written "
                       "file will be invalid.\n");
         priv->dts_warning = true;
     }
@@ -380,5 +407,5 @@ void mp_recorder_feed_packet(struct mp_recorder_sink *rst,
     MP_TARRAY_APPEND(rst, rst->packets, rst->num_packets, pkt);
 
     check_restart(priv);
-    mux_packets(rst, false);
+    mux_packets(rst);
 }

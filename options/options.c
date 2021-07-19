@@ -87,6 +87,7 @@ extern const struct m_sub_options ao_conf;
 
 extern const struct m_sub_options opengl_conf;
 extern const struct m_sub_options vulkan_conf;
+extern const struct m_sub_options vulkan_display_conf;
 extern const struct m_sub_options spirv_conf;
 extern const struct m_sub_options d3d11_conf;
 extern const struct m_sub_options d3d11va_conf;
@@ -197,6 +198,7 @@ const struct m_sub_options vo_sub_opts = {
         .snap_window = 0,
         .border = 1,
         .fit_border = 1,
+        .appid = "mpv",
         .WinID = -1,
         .window_scale = 1.0,
         .x11_bypass_compositor = 2,
@@ -274,6 +276,7 @@ const struct m_sub_options mp_subtitle_sub_opts = {
         {"sub", OPT_SUBSTRUCT(sub_style, sub_style_conf)},
         {"sub-clear-on-seek", OPT_FLAG(sub_clear_on_seek)},
         {"teletext-page", OPT_INT(teletext_page), M_RANGE(1, 999)},
+        {"sub-past-video-end", OPT_FLAG(sub_past_video_end)},
         {0}
     },
     .size = sizeof(OPT_BASE_STRUCT),
@@ -594,7 +597,7 @@ static const m_option_t mp_opts[] = {
     {"audio-file-auto", OPT_CHOICE(audiofile_auto,
         {"no", -1}, {"exact", 0}, {"fuzzy", 1}, {"all", 2})},
     {"cover-art-auto", OPT_CHOICE(coverart_auto,
-        {"no", -1}, {"fuzzy", 1})},
+        {"no", -1}, {"exact", 0}, {"fuzzy", 1}, {"all", 2})},
 
     {"", OPT_SUBSTRUCT(subs_rend, mp_subtitle_sub_opts)},
     {"", OPT_SUBSTRUCT(subs_filt, mp_sub_filter_opts)},
@@ -781,6 +784,7 @@ static const m_option_t mp_opts[] = {
 
 #if HAVE_VULKAN
     {"", OPT_SUBSTRUCT(vulkan_opts, vulkan_conf)},
+    {"", OPT_SUBSTRUCT(vulkan_display_opts, vulkan_display_conf)},
 #endif
 
 #if HAVE_D3D11
@@ -1034,6 +1038,7 @@ static const struct MPOpts mp_default_opts = {
         "Artist", "Album", "Album_Artist", "Comment", "Composer",
         "Date", "Description", "Genre", "Performer", "Rating",
         "Series", "Title", "Track", "icy-title", "service_name",
+        "Uploader", "Channel_URL",
         NULL
     },
 

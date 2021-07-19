@@ -330,9 +330,11 @@ function mp.get_next_timeout()
     return timer.next_deadline - now
 end
 
--- Run timers that have met their deadline.
--- Return: next absolute time a timer expires as number, or nil if no timers
+-- Run timers that have met their deadline at the time of invocation.
+-- Return: time>0 in seconds till the next due timer, 0 if there are due timers
+--         (aborted to avoid infinite loop), or nil if no timers
 local function process_timers()
+    local t0 = nil
     while true do
         local timer = get_next_timer()
         if not timer then
@@ -343,6 +345,14 @@ local function process_timers()
         if wait > 0 then
             return wait
         else
+            if not t0 then
+                t0 = now  -- first due callback: always executes, remember t0
+            elseif timer.next_deadline > t0 then
+                -- don't block forever with slow callbacks and endless timers.
+                -- we'll continue right after checking mpv events.
+                return 0
+            end
+
             if timer.oneshot then
                 timer:kill()
             else
@@ -518,8 +528,19 @@ function mp.dispatch_events(allow_wait)
         local wait = 0
         if not more_events then
             wait = process_timers() or 1e20 -- infinity for all practical purposes
-            for _, handler in ipairs(idle_handlers) do
-                handler()
+            if wait ~= 0 then
+                local idle_called = nil
+                for _, handler in ipairs(idle_handlers) do
+                    idle_called = true
+                    handler()
+                end
+                if idle_called then
+                    -- handlers don't complete in 0 time, and may modify timers
+                    wait = mp.get_next_timeout() or 1e20
+                    if wait < 0 then
+                        wait = 0
+                    end
+                end
             end
             -- Resume playloop - important especially if an error happened while
             -- suspended, and the error was handled, but no resume was done.

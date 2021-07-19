@@ -22,9 +22,6 @@
 #include "context.h"
 #include "utils.h"
 
-// Generated from presentation-time.xml
-#include "generated/wayland/presentation-time.h"
-
 struct priv {
     struct mpvk_ctx vk;
 };
@@ -32,14 +29,8 @@ struct priv {
 static bool wayland_vk_start_frame(struct ra_ctx *ctx)
 {
     struct vo_wayland_state *wl = ctx->vo->wl;
-
     bool render = !wl->hidden || wl->opts->disable_vsync;
-
-    if (wl->frame_wait && wl->presentation)
-        vo_wayland_sync_clear(wl);
-
-    if (render)
-        wl->frame_wait = true;
+    wl->frame_wait = true;
 
     return render;
 }
@@ -52,7 +43,7 @@ static void wayland_vk_swap_buffers(struct ra_ctx *ctx)
         vo_wayland_wait_frame(wl);
 
     if (wl->presentation)
-        wayland_sync_swap(wl);
+        vo_wayland_sync_swap(wl);
 }
 
 static void wayland_vk_get_vsync(struct ra_ctx *ctx, struct vo_vsync_info *info)
@@ -133,7 +124,6 @@ static bool resize(struct ra_ctx *ctx)
     const int32_t height = wl->scaling * mp_rect_h(wl->geometry);
 
     vo_wayland_set_opaque_region(wl, ctx->opts.want_alpha);
-    wl_surface_set_buffer_scale(wl->surface, wl->scaling);
     return ra_vk_ctx_resize(ctx, width, height);
 }
 
