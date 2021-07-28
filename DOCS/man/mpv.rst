@@ -43,6 +43,9 @@ The following listings are not necessarily complete. See ``etc/input.conf`` for
 a list of default bindings. User ``input.conf`` files and Lua scripts can
 define additional key bindings.
 
+See also ``--input-test`` for interactive binding details by key, and the
+`stats`_ built-in script for key bindings list (including print to terminal).
+
 Keyboard Control
 ----------------
 
@@ -1006,7 +1009,7 @@ listed.
 - ``AV:`` or ``V:`` (video only) or ``A:`` (audio only)
 - The current time position in ``HH:MM:SS`` format (``playback-time`` property)
 - The total file duration (absent if unknown) (``duration`` property)
-- Playback speed, e.g. `` x2.0``. Only visible if the speed is not normal. This
+- Playback speed, e.g. ``x2.0``. Only visible if the speed is not normal. This
   is the user-requested speed, and not the actual speed  (usually they should
   be the same, unless playback is too slow). (``speed`` property.)
 - Playback percentage, e.g. ``(13%)``. How much of the file has been played.

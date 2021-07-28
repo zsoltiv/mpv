@@ -851,6 +851,29 @@ Program Behavior
         - ``--reset-on-next-file=all``
           Try to reset all settings that were changed during playback.
 
+``--watch-later-options=option1,option2,...``
+    The options that are saved in "watch later" files if they have been changed
+    since when mpv started. These values will be restored the next time the
+    files are played. The playback position is always saved as ``start``, so
+    adding ``start`` to this list has no effect.
+
+    When removing options, existing watch later data won't be modified and will
+    still be applied fully, but new watch later data won't contain these
+    options.
+
+    This is a string list option. See `List Options`_ for details.
+
+    .. admonition:: Examples
+
+        - ``--watch-later-options-remove=fullscreen``
+          Resuming a file won't restore the fullscreen state.
+        - ``--watch-later-options-remove=volume``
+          ``--watch-later-options-remove=mute``
+          Resuming a file won't restore the volume or mute state.
+        - ``--watch-later-options-clr``
+          Resuming a file won't restore any option except the starting
+          position.
+
 ``--write-filename-in-watch-later-config``
     Prepend the watch later config files with the name of the file they refer
     to. This is simply written as comment on the top of the file.
@@ -6737,7 +6760,7 @@ Miscellaneous
     CLI/config file only alias for ``--cover-art-files-append``. Each use of this
     option will add a new external file.
 
-``--cover-art-auto=<no|fuzzy>``
+``--cover-art-auto=<no|exact|fuzzy|all>``
     Whether to load _external_ cover art automatically. Similar to
     ``--sub-auto`` and ``--audio-file-auto``. If a video already has tracks
     (which are not marked as cover art), external cover art will not be loaded.

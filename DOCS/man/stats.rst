@@ -24,7 +24,8 @@ stats:
 1      Show usual stats
 2      Show frame timings (scroll)
 3      Input cache stats
-4      Internal stuff (scroll)
+4      Active key bindings (scroll)
+0      Internal stuff (scroll)
 ====   ==================
 
 On pages which support scroll, these key bindings are also active:
@@ -51,13 +52,6 @@ option. The configuration syntax is described in `ON SCREEN CONTROLLER`_.
 Configurable Options
 ~~~~~~~~~~~~~~~~~~~~
 
-``key_oneshot``
-    Default: i
-``key_toggle``
-    Default: I
-
-    Key bindings to display stats.
-
 ``key_page_1``
     Default: 1
 ``key_page_2``
@@ -66,6 +60,8 @@ Configurable Options
     Default: 3
 ``key_page_4``
     Default: 4
+``key_page_0``
+    Default: 0
 
     Key bindings for page switching while stats are displayed.
 
@@ -171,17 +167,35 @@ Note: colors are given as hexadecimal values and use ASS tag order: BBGGRR
 Different key bindings
 ~~~~~~~~~~~~~~~~~~~~~~
 
-A different key binding can be defined with the aforementioned options
-``key_oneshot`` and ``key_toggle`` but also with commands in ``input.conf``,
-for example::
+Additional keys can be configured in ``input.conf`` to display the stats::
 
     e script-binding stats/display-stats
     E script-binding stats/display-stats-toggle
 
-Using ``input.conf``, it is also possible to directly display a certain page::
+And to display a certain page directly::
 
     i script-binding stats/display-page-1
     e script-binding stats/display-page-2
+
+Active key bindings page
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lists the active key bindings and the commands they're bound to, excluding the
+interactive keys of the stats script itself. See also ``--input-test`` for more
+detailed view of each binding.
+
+The keys are grouped automatically using a simple analysis of the command
+string, and one should not expect documentation-level grouping accuracy,
+however, it should still be reasonably useful.
+
+Using ``--idle --script-opts=stats-bindlist=yes`` will print the list to the
+terminal and quit immediately. By default long lines are shortened to 79 chars,
+and terminal escape sequences are enabled. A different length limit can be
+set by changing ``yes`` to a number (at least 40), and escape sequences can be
+disabled by adding ``-`` before the value, e.g. ``...=-yes`` or ``...=-120``.
+
+Like with ``--input-test``, the list includes bindings from ``input.conf`` and
+from user scripts. Use `--no-config`` to list only built-in bindings.
 
 Internal stuff page
 ~~~~~~~~~~~~~~~~~~~
